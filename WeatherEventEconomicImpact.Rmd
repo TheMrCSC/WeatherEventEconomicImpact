@@ -1,0 +1,237 @@
+---
+title: "Weather Events and their Impact on United States of America"
+output: html_document
+---
+
+## Synopsis:
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+As part of this analysis the following questions will need to be answered:
+  
+1. Across the United States, which types of events are most harmful with respect to population health?  
+2. Across the United States, which types of events have the greatest economic consequences?  
+
+## Data Processing:
+
+### Current Date and System Information
+
+```{r echo = TRUE}
+print(paste("Current Date: " , Sys.Date()))
+print(paste("Platform: " , R.Version()[c("platform")]))
+print(paste("Version String: " , R.Version()[c("version.string")]))
+print(paste("Operating System: " , R.Version()[c("os")]))
+```
+
+### Importing required libraries:
+
+```{r}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+### Reading data:
+
+The Storm data is stored in a bz2 zip file in order to reduce the file size.
+There are 902297 observations for 37 variables in the file.  
+
+The data is read using read.csv since it has the capability to unzip the file as well.  
+  
+```{r echo = TRUE, cache = TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/repdata/data/StormData.csv.bz2", ".\\Data\\StormData.csv.bz2")
+
+storm_data <- as.data.table(read.csv(".\\Data\\StormData.csv.bz2"))
+```
+  
+### Data Cleaning:
+
+Since the questions to be answered are about the population health and the economic impacts, all the columns mentioned in the tables will not be required.
+
+The required columns from the original data will be as follows:
+BGN_DATE, EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP.
+
+The BGN_DATE attribute is setup as a factor. This will be converted to a Date attribute.
+
+PROPDMGEXP and CROPDMGEXP are the exponentials which need to be multipled to PROPDMG and CROPDMG repesctively. This multiplication will also be done here.
+
+The EVTYPE column has a few issues which will be resolved here:  
+1. There are events where some instances are in capitals and some are in mixed case. For this all the event will be converted to upper case.  
+2. For some records there are spaces in the beginning  or the end. These will be removed.  
+3. Some records have periods "." for no apparent reason. These periods will have to be removed.  
+4. Similar to point 3, there is alo an issue with "(" and ")". These will also be removed.  
+
+```{r echo = TRUE}
+
+convertEXP <- function(input){
+        value = as.numeric(as.character(input[1]))
+        exp = input[2]
+        exp = tolower(exp)
+        if(exp == "h"){value = value * 100}
+        else if(exp == "k"){value = value * 1000}
+        else if(exp == "m"){value = value * 1000000}
+        else if(exp == "b"){value = value * 1000000000}
+        else if(exp %in% c("1","2","3","4","5","6","7","8","9","0")){
+                value = value * (10 ** as.numeric(as.character(exp)))
+        }else{
+                value = value 
+        }
+        return(value)
+}
+
+storm_data <- storm_data %>% select(BGN_DATE, EVTYPE, FATALITIES,
+        INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP) %>%
+        mutate(BEGIN_DATE = as.Date(as.character(BGN_DATE),"%m/%d/%Y"),
+               PROPERTY_DAMAGE = apply(storm_data[,c("PROPDMG","PROPDMGEXP")],1,convertEXP),
+               CROP_DAMAGE = apply(storm_data[,c("CROPDMG","CROPDMGEXP")],1,convertEXP),
+               EVENT_TYPE = toupper(EVTYPE),
+               EVENT_TYPE = gsub("[.()]"," ", EVENT_TYPE,),
+               EVENT_TYPE = trimws(EVENT_TYPE)) %>%
+        select(BEGIN_DATE, EVENT_TYPE, FATALITIES,INJURIES, PROPERTY_DAMAGE, 
+               CROP_DAMAGE)
+
+head(storm_data)
+```
+
+There are multiple events mentioned in the list that are not present in the event list mentioned in the documentation.
+
+The events mentioned in the documentation are as follows:
+  
+ ASTRONOMICAL LOW TIDE, AVALANCHE, BLIZZARD, COASTAL FLOOD, 
+ COLD/WIND CHILL, DEBRIS FLOW, DENSE FOG, DENSE SMOKE, DROUGHT, 
+ DUST DEVIL, DUST STORM, EXCESSIVE HEAT, EXTREME COLD/WIND CHILL, 
+ FLASH FLOOD, FLOOD, FROST/FREEZE, FUNNEL CLOUD, FREEZING FOG ,
+ HAIL, HEAT, HEAVY RAIN, HEAVY SNOW, HIGH SURF, HIGH WIND, 
+ HURRICANE/TYPHOON, ICE STORM, LAKE-EFFECT SNOW, LAKESHORE FLOOD,
+ LIGHTNING, MARINE HAIL, MARINE HIGH WIND, MARINE STRONG WIND, 
+ MARINE THUNDERSTORM WIND, RIP CURRENT, SEICHE, SLEET, 
+ STORM SURGE/TIDE, STRONG WIND, THUNDERSTORM WIND, TORNADO, 
+ TROPICAL DEPRESSION, TROPICAL STORM, TSUNAMI, VOLCANIC ASH, 
+ WATERSPOUT, WILDFIRE, WINTER STORM, WINTER WEATHER 
+  
+The list of events present in the data and not in the above list are as follows:
+
+```{r}
+events <- c('ASTRONOMICAL LOW TIDE', 'AVALANCHE', 'BLIZZARD', 'COASTAL FLOOD',  
+        'COLD/WIND CHILL', 'DEBRIS FLOW', 'DENSE FOG', 'DENSE SMOKE','DROUGHT',  
+        'DUST DEVIL', 'DUST STORM', 'EXCESSIVE HEAT', 'EXTREME COLD/WIND CHILL',  
+        'FLASH FLOOD', 'FLOOD', 'FROST/FREEZE', 'FUNNEL CLOUD', 'FREEZING FOG',
+        'HAIL', 'HEAT', 'HEAVY RAIN', 'HEAVY SNOW', 'HIGH SURF', 'HIGH WIND',  
+        'HURRICANE/TYPHOON', 'ICE STORM', 'LAKE-EFFECT SNOW', 'LAKESHORE FLOOD',
+        'LIGHTNING', 'MARINE HAIL', 'MARINE HIGH WIND', 'MARINE STRONG WIND',  
+        'MARINE THUNDERSTORM WIND', 'RIP CURRENT', 'SEICHE', 'SLEET', 
+        'STORM SURGE/TIDE', 'STRONG WIND', 'THUNDERSTORM WIND', 'TORNADO', 
+        'TROPICAL DEPRESSION', 'TROPICAL STORM', 'TSUNAMI', 'VOLCANIC ASH', 
+        'WATERSPOUT', 'WILDFIRE', 'WINTER STORM', 'WINTER WEATHER')
+
+events_not_present <- storm_data[!storm_data$EVENT_TYPE %in% toupper(events),c("EVENT_TYPE","BEGIN_DATE")]
+
+count_events_not_present <- events_not_present %>% group_by(EVENT_TYPE) %>% 
+        tally() %>% arrange(desc(n))
+
+head(count_events_not_present, 15)
+```
+
+There are total of 838 Event Types which are present in the data and not in event list.
+Since it is not possible to clean all the Event Types only the top 15 with the maximum number of records will be cleaned. The rest will be left as it is.
+Since there is no guidance on the cleaning, it has been done as per the authors judgement.
+
+```{r echo = TRUE}
+
+incorrect_event_types <- c("TSTM WIND", "THUNDERSTORM WINDS", "MARINE TSTM WIND", "URBAN/SML STREAM FLD",
+	"HIGH WINDS", "WILD/FOREST FIRE", "WINTER WEATHER/MIX", "TSTM WIND/HAIL", "FLASH FLOODING", 
+	"EXTREME COLD", "FLOOD/FLASH FLOOD", "SNOW", "LANDSLIDE", "FOG", "WIND")
+	
+correct_event_types <- c( "THUNDERSTORM WIND" ,"THUNDERSTORM WIND" ,"MARINE THUNDERSTORM WIND"
+	,"FLOOD" ,"STRONG WIND" ,"WILDFIRE" ,"WINTER WEATHER" ,"THUNDERSTORM WIND" ,"FLASH FLOOD"
+	,"EXTREME COLD/WIND CHILL" ,"FLOOD" ,"HEAVY SNOW"	 ,"AVALANCHE"	,"DENSE FOG" ,"STRONG WIND")
+
+event_correction <- data.frame(incorrect_event_types, correct_event_types)
+
+
+storm_data <- storm_data %>% left_join(event_correction, by = c("EVENT_TYPE" = "incorrect_event_types"))  %>% mutate(EVENT_TYPE = ifelse(!is.na(correct_event_types),as.character(correct_event_types),EVENT_TYPE)) %>% select(BEGIN_DATE, EVENT_TYPE, FATALITIES,INJURIES, PROPERTY_DAMAGE, CROP_DAMAGE)
+
+events_not_present_after_update <- storm_data[!storm_data$EVENT_TYPE %in% toupper(events),c("EVENT_TYPE","BEGIN_DATE")]
+ 
+count_events_not_present_after_update <- events_not_present_after_update %>% 
+         group_by(EVENT_TYPE) %>% tally() %>% arrange(desc(n))
+ 
+head(count_events_not_present_after_update, 15)
+```
+
+As shown in the above output, the event types with events not in the documentation doesn't contain a significant numer of rows.
+
+The final set of columns to be selected will be as follows:    
+- BEGIN_DATE: Date when the weather event began  
+- EVENT_TYPE: Type of Weather event  
+- FATALITIES: Number of deaths  
+- INJURIES: Number of injuries  
+- PROPERTY_DAMAGE: Amount of property damaged in dollars  
+- CROP_DAMAGE: Amount of Crops damages in dollars  
+
+### Analysis
+
+The analysis will be divided into 2 parts, each answering a question. The questions to be answered are as follows:
+  
+1. Across the United States, which types of events are most harmful with respect to population health?  
+2. Across the United States, which types of events have the greatest economic consequences?  
+  
+#### Analysis for Question 1:
+
+Here the question is about population health and which event is the most harmful.
+As per the cleansed data in order to determine the most harmful event to the population, the number of Fatalities and Injuries need to be considered.
+
+Below is the calculation of the fatalities and injuries for all the events. 
+Only the top 10 have been plotted.
+
+```{r echo = TRUE}
+fatality_injury <- storm_data %>% group_by(EVENT_TYPE) %>% 
+        summarise(total_fatality = sum(FATALITIES, na.rm = TRUE),
+                  total_injury = sum(INJURIES, na.rm= TRUE)) %>%
+        arrange(desc(total_fatality), desc(total_injury))
+
+fatality_injury_top <- head(fatality_injury, 10)
+
+fatality_injury_plot <- melt(fatality_injury_top, id = c("EVENT_TYPE"), 
+                             measure = c("total_fatality", "total_injury"))
+
+ggplot(fatality_injury_plot,aes(x = reorder(EVENT_TYPE, -value), y = value)) +
+        geom_bar(position="dodge", stat="identity", aes(fill = variable)) +
+        labs(title = "Top 10 events with highest impact on human health",
+             x = "Event type",  y = "Count") +
+      theme(axis.text.x=element_text(angle = 25, vjust = 0.4))
+```
+
+#### Analysis for Question 2:
+
+This question is about which event has the most economic impact. As per the cleaned data, the economic impact will be measured as the amount of property and crops that have been destroyed.
+
+Below is the calculation of destruction of Property and Crops for all events.
+Only the top 10 events have been shown.
+
+```{r echo = TRUE}
+property_crop <- storm_data %>% group_by(EVENT_TYPE) %>% 
+        summarise(total_property = sum(PROPERTY_DAMAGE, na.rm = TRUE),
+                  total_crop = sum(CROP_DAMAGE, na.rm= TRUE)) %>%
+        arrange(desc(total_property), desc(total_crop))
+
+property_crop_top <- head(property_crop, 10)
+
+property_crop_plot <- melt(property_crop_top, id = c("EVENT_TYPE"), 
+                             measure = c("total_property", "total_crop"))
+
+ggplot(property_crop_plot,aes(x = reorder(EVENT_TYPE, -value), y = value)) +
+        geom_bar(position="dodge", stat="identity", aes(fill = variable)) +
+        labs(title = "Top 10 event types with highest economic impact",
+             x = "Event type",  y = "Dollars($)") +
+      theme(axis.text.x=element_text(angle = 25, vjust = 0.4))
+```
+
+
+## Results
+
+The results are clear, **Tornados** cause maximum damage to human health. This is based on the matter of fact that the maximum number of fatalities are because of tornadoes.
+
+**Floods** cause the maximum economic impact as shown in the graphs above.
